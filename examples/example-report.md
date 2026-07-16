@@ -6,11 +6,12 @@
 ## TL;DR
 
 **Verdict: needs cleanup.** The setup works, but one release route drags **38,400 words**
-of instructions before any work starts, and 3 rules exist in diverged copies — the model
-regularly reads competing versions of the truth. Three moves fix most of it:
+(~50k tokens) of instructions before any work starts, 3 rules exist in diverged copies —
+the model reads competing versions of the truth — and six MCP servers load ~40 tools every
+session, two of them redundant. Three moves fix most of it:
 
 1. Merge the three copies of the code-style rule into one → no more competing truths.
-2. Split the release runbook out of the `ship-release` skill head → route drops 38k → 9k words.
+2. Defer the release runbook *and* the 12 release-only MCP tools → the heaviest route drops 38k → 9k words and the tool surface shrinks on every non-release task.
 3. Turn five prose requirements (word limits, JSON formats) into enforced checks → they stop being optional.
 
 ## Health board
@@ -22,6 +23,7 @@ regularly reads competing versions of the truth. Three moves fix most of it:
 | Skill catalog | 🟡 | 11,300 chars of descriptions — the model reads all of it to pick one skill |
 | Heaviest routes | 🔴 | `ship-release` reaches 38,400 words across 21 files |
 | Stale / unenforced | 🟡 | 1 rule guards a deleted service; 5 hard requirements live as polite prose |
+| Tool surface | 🔴 | 6 MCP servers, ~40 tools every session; 2 overlap (both fetch URLs), 12 are release-only |
 
 ## Findings, by priority
 
@@ -39,16 +41,24 @@ from its head, so any release task starts by dragging in 38,400 words — needed
 the verify step, if at all. **Proposal:** move the runbook behind a "read at the verify
 phase" pointer. The route shrinks 38k → ~9k words (−76%) with nothing lost.
 
-**3. Five hard requirements are requests, not rules.** 🟡
+**3. Every task carries the whole toolbox, including the release-only half.** 🔴
+Six MCP servers register ~40 tools, and all of them load every session. Two overlap — the
+`web` and `scrape` servers both fetch URLs, so the model chooses between near-duplicates on
+every call — and the deploy server's 12 tools are touched only at release. **Proposal:**
+drop one of the overlapping fetchers and move the deploy server behind on-demand loading
+(or drive it through code execution), so ~40 tools stop competing for attention on ordinary
+tasks. Fewer, non-overlapping tools measurably sharpen selection.
+
+**4. Five hard requirements are requests, not rules.** 🟡
 Word limits and JSON output formats live as prose in five prompts — the model can (and
 sometimes does) politely ignore them. **Proposal:** enforce them with a PostToolUse hook
 and an output schema, then delete the prose. A check that blocks beats a sentence that asks.
 
-**4. A rule guards a service that no longer exists.** 🟡
+**5. A rule guards a service that no longer exists.** 🟡
 `legacy-api.md` describes precautions for an API deleted in March. No code references it,
 no hook reads it — it only costs attention. **Proposal:** delete it; nothing breaks.
 
-**5. An 8-month-old memory note still shapes every answer.** 🟡
+**6. An 8-month-old memory note still shapes every answer.** 🟡
 "Always show steps" was saved once, long ago, and still applies to everything.
 **Proposal:** confirm with the owner it's still wanted; if not, remove it from memory.
 
@@ -67,6 +77,7 @@ Suggested order (cheap and safe first):
 2. Merge `code-style.md` ×3 and `naming.md` ×2 → one home each, links elsewhere.
 3. Split the release runbook out of `ship-release`'s head.
 4. Convert the 5 prose requirements into a hook + schema.
+5. Drop one overlapping fetch server; defer the deploy server's 12 tools behind on-demand loading.
 
 | Metric | Before | After |
 |---|---|---|
@@ -74,21 +85,23 @@ Suggested order (cheap and safe first):
 | Heaviest route | 38,400 w | 9,200 w (−76%) |
 | Diverged duplicates | 3 | 0 |
 | Prose-only hard requirements | 5 | 0 |
+| Tools loaded every session | ~40 | ~28 (release tools deferred) |
 
 ## Appendix — inventory & receipt
 
 | Metric | Value |
 |---|---|
-| Session preload (CLAUDE.md ×2 + memory index) | 4,120 words |
+| Session preload (CLAUDE.md ×2 + memory index) | 4,120 words (~5,350 tokens) |
 | Rules | 14 files / 6,890 words |
 | Skills | 23 (project 9, user 6, plugins 8) |
 | Skill descriptions total | 11,300 chars |
 | Heaviest skill reference chain (depth 2) | `ship-release`: 38,400 words / 21 files |
 | Duplicate basenames flagged | 4 (3 diverged, 1 same-purpose) |
+| MCP servers / live tools | 6 servers / ~40 tools (2 overlapping, 12 release-only) |
 
 Scanned: 2 CLAUDE.md, 14 rules, 23 skills (+descriptions), 2 settings files (key names
-only), memory index, 4 hook registrations. Skipped: MCP instruction blocks (2 servers —
-enumerate manually), plugin internals (read-only marketplace copies). Needs a human eye:
+only), memory index, 4 hook registrations, and the live tool surface (6 MCP servers /
+~40 tools). Skipped: plugin internals (read-only marketplace copies). Needs a human eye:
 whether the two `naming.md` copies are truly one rule or two audiences.
 
 *No changes were made. Every arrow above is a proposal.*

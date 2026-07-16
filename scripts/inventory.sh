@@ -17,6 +17,10 @@ USER_CLAUDE="${CLAUDE_USER_DIR:-$HOME/.claude}"
 # tr strips BSD wc's leading spaces (R1 F-4)
 words()  { { [ -f "$1" ] && wc -w < "$1" || echo 0; } | tr -d ' '; }
 lines()  { { [ -f "$1" ] && wc -l < "$1" || echo 0; } | tr -d ' '; }
+# Rough token estimate: ~1.3 tokens per English word. A scale heuristic to map word
+# counts onto the unit the context budget is actually spent in — NOT a billing figure.
+# Real tokenization varies by content and tokenizer; treat as ±30%.
+toks()   { echo $(( ${1:-0} * 13 / 10 )); }
 
 section() { printf '\n=== %s ===\n' "$1"; }
 
@@ -102,12 +106,18 @@ else
 fi
 
 # ------------------------------------------------------------------- 7. MCP
-section "MCP servers (names only)"
+section "MCP servers (config names only — tool schemas load at runtime, not counted here)"
 if [ -f "$TARGET/.mcp.json" ]; then
-  grep -oE '"[A-Za-z0-9_-]+"[[:space:]]*:[[:space:]]*\{' "$TARGET/.mcp.json" | head -30 \
-    | sed 's/[":{ ]//g' | sed 's/^/  - /' || true
+  # Loose parse (no jq dependency): server names are keys under mcpServers. Filter out the
+  # common nested config keys; the count is a close approximation, not exact — a server
+  # literally named after a filtered key (e.g. "url") would be undercounted.
+  mapfile -t MCP_SERVERS < <(grep -oE '"[A-Za-z0-9_.-]+"[[:space:]]*:[[:space:]]*\{' "$TARGET/.mcp.json" \
+    | sed 's/[":{ ]//g' \
+    | grep -viE '^(mcpServers|command|args|env|type|url|headers|disabled|timeout|cwd)$' || true)
+  for s in ${MCP_SERVERS[@]+"${MCP_SERVERS[@]}"}; do echo "  - $s"; done
+  echo "mcp servers configured here: ${#MCP_SERVERS[@]}  (each adds an instruction block + its tool schemas to context — the live tool surface is weighed in the skill, not by this script)"
 else
-  echo "(no .mcp.json)"
+  echo "(no project .mcp.json — MCP may still be configured at user/global level; inventory the live tool surface in the skill)"
 fi
 
 # -------------------------------------------------- 8. duplicate candidates
@@ -178,9 +188,10 @@ done
 
 # ----------------------------------------------------------------- summary
 section "Summary"
-echo "session preload (CLAUDE.md files + MEMORY.md index): ~$PRELOAD_TOTAL words"
-echo "rules: $RULES_COUNT files / $RULES_TOTAL words (loading model depends on your setup)"
+echo "session preload (CLAUDE.md files + MEMORY.md index): ~$PRELOAD_TOTAL words (~$(toks "$PRELOAD_TOTAL") tokens)"
+echo "rules: $RULES_COUNT files / $RULES_TOTAL words / ~$(toks "$RULES_TOTAL") tokens (loading model depends on your setup)"
 echo "skills: $SKILL_COUNT, descriptions: $DESC_CHARS chars (discovery budget)"
 echo "duplicate basenames flagged: $DUP_FOUND"
 echo
+echo "Token figures are ~words×1.3 — a scale heuristic (±30%), not a billing count."
 echo "Numbers are a map, not a verdict. Interpretation happens in the harness-audit skill."

@@ -37,24 +37,47 @@ clean second.
    - A surface that doesn't exist in this setup is noted and skipped — never an error.
 3. Distinguish **text vs enforced checks**: a polite instruction in prose and a hook/
    permission/schema that actually blocks are different species. Tag each element.
+4. **Tool surface (you observe this, the script cannot).** The script sees MCP server
+   names in config; you carry the *live* tool surface this session actually loaded. Record:
+   how many tools are available, how many load upfront vs. are deferred (pulled in on
+   demand, e.g. via a tool-search mechanism), which MCP servers contribute how many tools,
+   and whether each ships an instruction block. Tool definitions are a first-class context
+   cost, not free plumbing — inventory them like any other surface.
 
 ## Phase 2 — ANALYZE (find the junk)
 
-Work through four lenses, citing file paths and numbers for every finding:
+Work through five lenses, citing file paths and numbers for every finding:
 
 1. **Duplicates and drift.** Same rule living in several places; same-name files with
    diverging content (the script flags candidates — verify each by reading both versions;
    same name with different purpose is NOT a duplicate). Each real copy is a fork of the
    truth: one gets fixed, the others rot.
-2. **Load-time misplacement.** What loads at session start but is only needed for one
-   task type? What does each skill drag in through its reference chain (the script
-   measures words per chain)? Big libraries are fine — everything loading at once is not.
+2. **Load-time misplacement (the progressive-disclosure test).** What loads at session
+   start but is only needed for one task type? What does each skill drag in through its
+   reference chain (the script measures words per chain)? Big libraries are fine —
+   everything loading at once is not. A healthy surface loads a *pointer* and opens the
+   detail on demand (the way skills are meant to work); an unhealthy one inlines the whole
+   procedure into `CLAUDE.md` or a skill head, so it's paid for every session whether the
+   task needs it or not. Flag front-loaded content that should sit behind a link.
 3. **Budget pressure.** Total preload words; sum of skill descriptions vs the discovery
    surface; the single heaviest routes. Report raw numbers and compare against the
    thresholds table in the repo README (they age — the numbers don't).
-4. **Stale and unenforced.** Rules referencing tools/files that no longer exist; hard
-   requirements (word limits, output formats) living as prose that should be hooks,
-   schemas, or permission rules instead.
+4. **Stale, unenforced, and compaction-fragile.** Rules referencing tools/files that no
+   longer exist; hard requirements (word limits, output formats) living as prose that
+   should be hooks, schemas, or permission rules instead. And separate **critical rules
+   from compaction-survivable ones**: an instruction the model must never drop (a safety
+   invariant, a hard constraint) belongs somewhere permanent — a hook, a permission, an
+   always-loaded config line — not in prose that a mid-session context compaction can
+   summarize away. Flag critical instructions that survive only as long as the raw text
+   stays in the window.
+5. **Tool surface.** More tools is not more capability — overlapping or redundant tools
+   degrade selection, and every definition spends context whether or not it's used. From
+   the live surface (MAP step 4): which tools overlap or duplicate each other's job? Which
+   servers are subscribed but unused here? Which heavy schemas load upfront when they're
+   needed for one task type only? The fix is a minimal, non-overlapping set: drop unused
+   servers, prefer deferred/on-demand tool loading over loading everything upfront, and
+   for MCP-heavy setups consider driving the server through code execution instead of
+   exposing every tool as a direct call. Tools should return only the signal the task needs.
 
 ## Phase 3 — REPORT (verdict first, details last)
 
@@ -66,9 +89,10 @@ Structure, top to bottom:
 
 1. **TL;DR (≤5 lines)** — one-phrase verdict (healthy / needs cleanup / cluttered), the
    single most telling number, and the top 3 actions with their expected payoff.
-2. **Health board** — five axes as traffic lights (green / yellow / red), one line of
+2. **Health board** — six axes as traffic lights (green / yellow / red), one line of
    "why" per axis: session preload, duplicate & drifted rules, skill catalog
-   (descriptions budget), heaviest load routes, stale or unenforced rules.
+   (descriptions budget), heaviest load routes, stale or unenforced rules, tool surface
+   (count, overlap, upfront vs. deferred).
 3. **Findings by priority** — critical first. Each: a short paragraph (what → why it
    hurts → proposal → expected saving); paths and numbers are the evidence, not the
    headline.
