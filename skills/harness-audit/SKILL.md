@@ -56,21 +56,28 @@ Work through four lenses, citing file paths and numbers for every finding:
    requirements (word limits, output formats) living as prose that should be hooks,
    schemas, or permission rules instead.
 
-## Phase 3 — REPORT (buckets, not essays)
+## Phase 3 — REPORT (verdict first, details last)
 
-Produce a single report with:
+Write for a human who hasn't seen the audit. Every finding is a short story in plain
+language — what's happening → why it hurts → what to do → what it saves. The analysis
+lenses (keep / merge / defer-load / harden / remove) stay internal to Phase 2; in the
+report they become ordinary verbs inside sentences, never headline codes like "MERGE ×3".
+Structure, top to bottom:
 
-1. **Headline numbers** — before-state: preload words, skill count, description chars,
-   duplicates found, heaviest chain.
-2. **Findings in five buckets**, each item = path + evidence + one-line proposal:
-   - **KEEP** — earning its place; say why, so the next audit doesn't re-litigate it.
-   - **MERGE** — duplicates → one home, one owner; name which copy survives.
-   - **DEFER-LOAD** — useful but loading too early → move to the phase that needs it.
-   - **HARDEN** — prose requirement → mechanical check (hook / schema / permission).
-   - **REMOVE** — no evidence it still helps; note what breaks if you're wrong.
-3. **Projected after-state** — the same headline numbers if all proposals are accepted.
-4. **Receipt** — what was scanned, what was skipped and why, what needs a human eye.
-5. Top 3-5 findings first, in plain language. The owner decides; you propose.
+1. **TL;DR (≤5 lines)** — one-phrase verdict (healthy / needs cleanup / cluttered), the
+   single most telling number, and the top 3 actions with their expected payoff.
+2. **Health board** — five axes as traffic lights (green / yellow / red), one line of
+   "why" per axis: session preload, duplicate & drifted rules, skill catalog
+   (descriptions budget), heaviest load routes, stale or unenforced rules.
+3. **Findings by priority** — critical first. Each: a short paragraph (what → why it
+   hurts → proposal → expected saving); paths and numbers are the evidence, not the
+   headline.
+4. **What's healthy** — what to leave alone and why. Earns trust (the report doesn't
+   only complain) and stops the next audit from re-litigating settled calls.
+5. **Cleanup plan** — proposed steps in execution order + a before → after table of the
+   headline numbers if every proposal is accepted.
+6. **Appendix** — full inventory numbers and the receipt: what was scanned, what was
+   skipped and why, what needs a human eye. The owner decides; you propose.
 
 Offer to re-run the audit after cleanup to verify the before/after delta — and suggest
 scheduling it as periodic maintenance (monthly, or before every model switch).
