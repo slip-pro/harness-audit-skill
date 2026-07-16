@@ -28,7 +28,7 @@ clean second.
      `@`-imports (all load every session — this is the preload).
    - Rules directories (project `.claude/rules/`, user, or repo conventions).
    - Skills — project, user, and plugin skills; frontmatter `description:` lines are the
-     discovery surface the model reads to pick a skill.
+     discovery budget the model spends to pick a skill.
    - Commands, agents, hooks (registration in `settings.json` — count, don't read values),
      auto-memory (`MEMORY.md` index + files), permission lists, MCP servers and their
      instruction blocks.
