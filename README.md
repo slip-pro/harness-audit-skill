@@ -77,11 +77,19 @@ guidelines as of **2026-07**:
 |---|---|---|---|
 | Session preload (CLAUDE.md + memory index) | < 3k words | 3-8k words | > 8k words |
 | Single skill load chain | < 5k words | 5-15k words | > 15k words |
-| Skill descriptions total | < 8k chars | 8-16k chars | > 16k chars |
+| Skill descriptions total | fits the listing budget¹ | ~1-2× budget | > 2× budget |
 | Copies of one rule | 1 | 2 | 3+ |
 
-These are maintenance heuristics, not laws. A 20k-word chain that loads exactly when
-needed beats a 3k preload of stale rules.
+¹ The skill-descriptions row has a documented anchor ([Claude Code skills docs](https://code.claude.com/docs/en/skills)):
+the skill listing gets **1% of the model's context window** (configurable via
+`skillListingBudgetFraction`; per-skill cap 1,536 chars for `description` +
+`when_to_use`, via `skillListingMaxDescChars`). On a 200k-token model that's ~2,000
+tokens — very roughly 8k English chars. Past the budget Claude Code silently shortens
+descriptions starting with the least-used skills, stripping exactly the keywords that
+make a skill discoverable. Run `/doctor` to see your listing's actual cost.
+
+The other rows are maintenance heuristics, not laws. A 20k-word chain that loads exactly
+when needed beats a 3k preload of stale rules.
 
 ## What it does NOT do
 
