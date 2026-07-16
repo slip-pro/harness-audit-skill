@@ -126,11 +126,11 @@ fallback**: to eyeball relative sizes when you haven't run `/context`, multiply 
 - **Contradiction and drift detection is judgement, not a checksum.** The script surfaces
   overlap and same-name candidates deterministically; deciding whether two rules truly conflict
   (vs. serve different audiences) is the model reading them, and can miss or over-flag.
-- Broken-reference scanning flags path-like links (containing `/`, with a known extension) and
-  `@`-imports that don't resolve; bare filename mentions ("spec.md") are left to the semantic
-  pass to avoid noise. **Known false-negative:** a markdown link to an *adjacent* file with no
-  path prefix (`[see](adjacent.md)`) is currently skipped by the same slash rule — a real
-  broken link there won't be caught deterministically (the semantic pass can still spot it).
+- Broken-reference scanning judges by source: a markdown link (`](path)`) or an `@`-import is
+  an explicit file reference, so it's flagged by extension even without a `/` (an adjacent-file
+  link like `](spec.md)` is caught); a backtick `` `path` `` is only judged when it looks
+  path-like (has a `/`), because bare backtick mentions ("`spec.md`", "`harness-lint.sh`") are
+  usually tool or command names — left to the semantic pass to avoid noise.
 - `description:` counting reads the first frontmatter line only (multi-line descriptions are
   undercounted) and includes the key + newline (~14 bytes overhead per skill).
 - Reference-chain tracing follows local markdown links to depth **2** by default

@@ -162,23 +162,34 @@ resolves() {  # $1 = referenced path, $2 = dir of the referencing file. 0 if it 
   return 1
 }
 
+# A markdown link "](path)" and an @-import are unambiguous FILE references: the author
+# is pointing at a file, so a broken one is a real dead link even when the path has no "/"
+# (an adjacent-file link like "](spec.md)"). A backtick `path`, by contrast, is often a
+# tool or command name — we only judge it when it looks path-like (has a "/"). So we tag
+# each candidate by its source and apply the right rule:
+#   L = markdown link  -> judge by extension, slash optional
+#   I = @-import       -> always judged (path may even be extensionless)
+#   B = backtick       -> judge only when it has a "/" (else it's the semantic pass's job)
 DEAD_FOUND=0
 for f in ${REF_SCAN[@]+"${REF_SCAN[@]}"}; do
   fdir="$(dirname "$f")"
-  # Collect candidate references: markdown links, backtick paths, @-imports.
-  while IFS= read -r ref; do
+  while IFS=$'\t' read -r tag ref; do
     [ -z "$ref" ] && continue
     # Filters: skip URLs, placeholders, globs, anchors-only.
     case "$ref" in
       *://*|\#*|"") continue ;;
       *"<"*|*">"*|*"*"*|*"..."*|*"{"*|*"}"*|*" "*) continue ;;
     esac
-    # Only judge a real broken LINK: a path (has a "/") ending in a known extension, or an
-    # @-import. A bare filename mention ("spec.md", "harness-lint.sh") is usually conceptual
-    # or a tool name — that's the semantic pass's job, not a deterministic dead-link.
-    case "$ref" in
-      @*) refpath="${ref#@}" ;;
-      */*.md|*/*.sh|*/*.json|*/*.py|*/*.ts|*/*.js|*/*.mjs|*/*.cjs|*/*.yaml|*/*.yml|*/*.toml|*/*.ps1|*/*.txt) refpath="$ref" ;;
+    case "$tag" in
+      I) refpath="${ref#@}" ;;                          # @-import — always judged
+      L) case "$ref" in                                 # link — known ext, slash optional
+           *.md|*.sh|*.json|*.py|*.ts|*.js|*.mjs|*.cjs|*.yaml|*.yml|*.toml|*.ps1|*.txt) refpath="$ref" ;;
+           *) continue ;;
+         esac ;;
+      B) case "$ref" in                                 # backtick — require a slash
+           */*.md|*/*.sh|*/*.json|*/*.py|*/*.ts|*/*.js|*/*.mjs|*/*.cjs|*/*.yaml|*/*.yml|*/*.toml|*/*.ps1|*/*.txt) refpath="$ref" ;;
+           *) continue ;;
+         esac ;;
       *) continue ;;
     esac
     if ! resolves "$refpath" "$fdir"; then
@@ -188,9 +199,9 @@ for f in ${REF_SCAN[@]+"${REF_SCAN[@]}"}; do
     fi
   done < <(
     {
-      grep -oE '\]\([^)]+\)'                 "$f" 2>/dev/null | sed -e 's/^](//' -e 's/)$//'
-      grep -oE '`[^`]+`'                      "$f" 2>/dev/null | sed 's/`//g'
-      grep -oE '(^|[[:space:]])@[A-Za-z0-9_./~-]+' "$f" 2>/dev/null | tr -d ' \t'
+      grep -oE '\]\([^)]+\)'                 "$f" 2>/dev/null | sed -e 's/^](//' -e 's/)$//' -e 's/^/L\t/'
+      grep -oE '`[^`]+`'                      "$f" 2>/dev/null | sed -e 's/`//g' -e 's/^/B\t/'
+      grep -oE '(^|[[:space:]])@[A-Za-z0-9_./~-]+' "$f" 2>/dev/null | tr -d ' \t' | sed 's/^/I\t/'
     } | sort -u
   )
 done

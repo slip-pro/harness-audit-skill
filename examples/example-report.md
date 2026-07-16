@@ -54,8 +54,10 @@ other two with links.
 **4. Starting a release drags in a small book.** 🟡
 `/context` shows the preload at 8,900 tokens; ~6,800 of it is the deployment runbook and
 rollback history linked from `ship-release`'s head — needed only at the verify step, if at all,
-yet paid every session. **Proposal:** move it behind a "read at verify" pointer. Preload drops
-8,900 → ~2,100 tokens with nothing lost.
+yet paid every session. `/doctor` flags bloat *inside* CLAUDE.md, but not this: the weight sits
+in a skill's reference chain, not in the preload file itself, so it stays under the radar until
+you trace what the route drags in. **Proposal:** move it behind a "read at verify" pointer.
+Preload drops 8,900 → ~2,100 tokens with nothing lost.
 
 **5. Five hard requirements are requests, not rules.** 🟡
 Word limits and JSON output formats live as prose in five prompts — the model can (and does)
