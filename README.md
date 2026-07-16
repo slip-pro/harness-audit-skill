@@ -23,6 +23,11 @@ Typical findings this audit surfaces:
 Fat setups think richer and deliver worse. When "the new model got worse", the junk is
 often yours. Treat the harness like a car: it needs scheduled maintenance.
 
+## Requirements
+
+- Claude Code
+- bash ≥ 4.0 for the inventory script (macOS ships 3.2 — `brew install bash`)
+
 ## Install
 
 Copy the skill into your project (or user) skills directory:
@@ -86,9 +91,12 @@ needed beats a 3k preload of stale rules.
 
 ## Limitations
 
-- `description:` counting reads the first frontmatter line only; multi-line descriptions
-  are undercounted.
-- Load-chain tracing follows local markdown links up to depth 5; dynamically-loaded
+- `description:` counting reads the first frontmatter line only (multi-line descriptions
+  are undercounted) and includes the `description:` key and newline (~14 bytes overhead
+  per skill).
+- Reference-chain tracing follows local markdown links up to depth **2** by default
+  (skill + direct references + one hop; override via `HARNESS_AUDIT_CHAIN_DEPTH`).
+  "Reachable" is not "loaded" — it measures how much a route CAN drag in. Dynamic
   context (hooks output, MCP instructions) is enumerated but not weighed.
 - Plugin discovery covers `~/.claude/plugins`; marketplace layouts may vary.
 

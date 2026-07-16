@@ -4,12 +4,19 @@
 # No dependencies beyond coreutils + find + grep + awk. Writes nothing. Reads no secret values.
 set -euo pipefail
 
+# mapfile and associative arrays need bash 4+. macOS ships 3.2 by default (R1 F-1).
+if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ]; then
+  echo "harness-audit requires bash >= 4. macOS ships bash 3.2; install via: brew install bash" >&2
+  exit 1
+fi
+
 TARGET="${1:-$PWD}"
 TARGET="$(cd "$TARGET" && pwd)"
 USER_CLAUDE="${CLAUDE_USER_DIR:-$HOME/.claude}"
 
-words()  { [ -f "$1" ] && wc -w < "$1" || echo 0; }
-lines()  { [ -f "$1" ] && wc -l < "$1" || echo 0; }
+# tr strips BSD wc's leading spaces (R1 F-4)
+words()  { { [ -f "$1" ] && wc -w < "$1" || echo 0; } | tr -d ' '; }
+lines()  { { [ -f "$1" ] && wc -l < "$1" || echo 0; } | tr -d ' '; }
 
 section() { printf '\n=== %s ===\n' "$1"; }
 
@@ -38,7 +45,7 @@ for d in "$TARGET/.claude/rules" "$TARGET/rules" "$USER_CLAUDE/rules"; do
   while IFS= read -r f; do
     w=$(words "$f"); RULES_TOTAL=$((RULES_TOTAL + w)); RULES_COUNT=$((RULES_COUNT + 1))
   done < <(find "$d" -name '*.md' -type f 2>/dev/null)
-  n=$(find "$d" -name '*.md' -type f 2>/dev/null | wc -l)
+  n=$(find "$d" -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')
   printf '%-60s %4s files\n' "${d/#$HOME/\~}" "$n"
 done
 echo "rules total: $RULES_COUNT files, $RULES_TOTAL words"
@@ -51,7 +58,7 @@ while IFS= read -r d; do SKILL_DIRS+=("$d"); done \
 # Non-standard layouts (e.g. a harness repo keeping skills outside .claude/):
 # export HARNESS_AUDIT_EXTRA_SKILL_DIRS=/path/one:/path/two
 IFS=':' read -ra EXTRA <<< "${HARNESS_AUDIT_EXTRA_SKILL_DIRS:-}"
-for d in "${EXTRA[@]:-}"; do [ -n "$d" ] && [ -d "$d" ] && SKILL_DIRS+=("$d"); done
+for d in ${EXTRA[@]+"${EXTRA[@]}"}; do [ -n "$d" ] && [ -d "$d" ] && SKILL_DIRS+=("$d"); done
 DESC_CHARS=0; SKILL_COUNT=0
 for d in "${SKILL_DIRS[@]}"; do
   [ -d "$d" ] || continue
@@ -69,7 +76,7 @@ echo "skills total: $SKILL_COUNT skills, description budget used: $DESC_CHARS ch
 section "Commands and agents"
 for d in "$TARGET/.claude/commands" "$USER_CLAUDE/commands" "$TARGET/.claude/agents" "$USER_CLAUDE/agents"; do
   [ -d "$d" ] || continue
-  n=$(find "$d" -name '*.md' -type f 2>/dev/null | wc -l)
+  n=$(find "$d" -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')
   w=$(find "$d" -name '*.md' -type f -exec cat {} + 2>/dev/null | wc -w)
   printf '%-60s %4s files %8s words\n' "${d/#$HOME/\~}" "$n" "$w"
 done
@@ -87,7 +94,7 @@ section "Memory (auto-memory)"
 slug=$(printf '%s' "$TARGET" | tr '/' '-')
 MEMDIR="$USER_CLAUDE/projects/$slug/memory"
 if [ -d "$MEMDIR" ]; then
-  n=$(find "$MEMDIR" -name '*.md' -type f | wc -l)
+  n=$(find "$MEMDIR" -name '*.md' -type f | wc -l | tr -d ' ')
   printf '%-60s %4s files, MEMORY.md %s words\n' "${MEMDIR/#$HOME/\~}" "$n" "$(words "$MEMDIR/MEMORY.md")"
   PRELOAD_TOTAL=$((PRELOAD_TOTAL + $(words "$MEMDIR/MEMORY.md")))
 else
@@ -159,7 +166,7 @@ chain_words() {  # $1 = SKILL.md path; BFS over local .md links, depth-capped
   echo "$total ${#seen[@]}"
 }
 CHAIN_DIRS=("$TARGET/.claude/skills" "$USER_CLAUDE/skills")
-for d in "${EXTRA[@]:-}"; do [ -n "$d" ] && [ -d "$d" ] && CHAIN_DIRS+=("$d"); done
+for d in ${EXTRA[@]+"${EXTRA[@]}"}; do [ -n "$d" ] && [ -d "$d" ] && CHAIN_DIRS+=("$d"); done
 for d in "${CHAIN_DIRS[@]}"; do
   [ -d "$d" ] || continue
   while IFS= read -r f; do

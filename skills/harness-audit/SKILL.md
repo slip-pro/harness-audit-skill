@@ -19,9 +19,11 @@ clean second.
 
 ## Phase 1 — MAP (build the inventory)
 
-1. Run the deterministic collector:
-   `bash scripts/inventory.sh <project-path>` (from this skill's repo; use
-   `HARNESS_AUDIT_EXTRA_SKILL_DIRS=/path1:/path2` for non-standard skill layouts).
+1. Run the deterministic collector (requires bash ≥ 4):
+   `bash .claude/skills/harness-audit/scripts/inventory.sh <project-path>` — the path
+   after the standard install; if the repo is kept elsewhere, use its
+   `scripts/inventory.sh` path. `HARNESS_AUDIT_EXTRA_SKILL_DIRS=/path1:/path2` covers
+   non-standard skill layouts.
 2. Read its output and extend it with what a script cannot see. Enumerate every surface,
    and for each element record: **where it lives / when it loads / how big it is**:
    - `CLAUDE.md` — project, `CLAUDE.local.md`, user `~/.claude/CLAUDE.md`, and their
