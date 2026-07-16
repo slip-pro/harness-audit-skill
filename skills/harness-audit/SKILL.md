@@ -1,107 +1,138 @@
 ---
 name: harness-audit
-description: Audit your Claude Code harness — map every instruction the model carries (CLAUDE.md, rules, skills, commands, agents, hooks, memory, settings, MCP), find duplicates and bloat, and get a prioritized cleanup plan. Use when the model "got worse", before switching models, or as periodic maintenance. Read-only — reports and proposes, never changes anything.
+description: Audit your Claude Code harness — find what quietly hurts it. Reads the platform's own numbers (/context, /doctor) for real token cost, then goes past them: broken references, rules that contradict each other, the same rule drifting in two files, hard constraints living as ignorable prose, and load-time bloat. Use when the model "got worse", before switching models, or as periodic maintenance. Read-only — reports and proposes, never changes anything.
 ---
 
 # harness-audit
 
-Your harness is everything wrapped around the model that you control: instructions,
-rules, skills, memory, hooks, permissions. It grows one patch at a time and no single
-screen shows it whole. This skill makes it visible, then proposes a cleanup — map first,
-clean second.
+Your harness — CLAUDE.md, rules, skills, commands, agents, hooks, memory, permissions,
+MCP — grows one patch at a time. Every rule fixed a real problem once; nobody sees the
+whole pile, and it competes for the model's attention on every task.
+
+**This skill does NOT re-measure what the platform already measures.** Claude Code ships
+`/context` (real per-category token cost of your window) and `/doctor` (its own health
+pass: unused skills, CLAUDE.md bloat, slow hooks, skill-listing overrun). Guessing tokens
+with a word count when those exist is exactly the kind of junk this audit is meant to find.
+So the skill's job is the layer **on top**: read the platform's numbers, then find what the
+platform can't — broken references, contradictions, drift, prose-that-should-be-enforced,
+misplacement. Map first, judge second, change nothing.
 
 **Invariants — read before doing anything:**
-- **Read-only.** You never edit, move, or delete anything during the audit. Every change
-  is a separate action the owner takes after reading the report.
+- **Read-only.** You never edit, move, or delete during the audit. Every change is a
+  separate action the owner takes after reading the report.
 - **No secret values.** Inventory settings and configs by key names and sizes only.
+- **Real numbers over estimates.** Token cost comes from `/context` and `/doctor`, not from
+  a word-count heuristic. Only fall back to word counts when the platform output is
+  genuinely unavailable — and say so in the report.
 - **Report in the language of the conversation.** The skill text is English; the report
   belongs to the user.
 
-## Phase 1 — MAP (build the inventory)
+## Phase 1 — REAL NUMBERS (the platform already knows the cost)
 
-1. Run the deterministic collector (requires bash ≥ 4):
-   `bash .claude/skills/harness-audit/scripts/inventory.sh <project-path>` — the path
-   after the standard install; if the repo is kept elsewhere, use its
-   `scripts/inventory.sh` path. `HARNESS_AUDIT_EXTRA_SKILL_DIRS=/path1:/path2` covers
-   non-standard skill layouts.
-2. Read its output and extend it with what a script cannot see. Enumerate every surface,
-   and for each element record: **where it lives / when it loads / how big it is**:
-   - `CLAUDE.md` — project, `CLAUDE.local.md`, user `~/.claude/CLAUDE.md`, and their
-     `@`-imports (all load every session — this is the preload).
-   - Rules directories (project `.claude/rules/`, user, or repo conventions).
-   - Skills — project, user, and plugin skills; frontmatter `description:` lines are the
-     discovery budget the model spends to pick a skill.
-   - Commands, agents, hooks (registration in `settings.json` — count, don't read values),
-     auto-memory (`MEMORY.md` index + files), permission lists, MCP servers and their
-     instruction blocks.
-   - A surface that doesn't exist in this setup is noted and skipped — never an error.
-3. Distinguish **text vs enforced checks**: a polite instruction in prose and a hook/
-   permission/schema that actually blocks are different species. Tag each element.
-4. **Tool surface (you observe this, the script cannot).** The script sees MCP server
-   names in config; you carry the *live* tool surface this session actually loaded. Record:
-   how many tools are available, how many load upfront vs. are deferred (pulled in on
-   demand, e.g. via a tool-search mechanism), which MCP servers contribute how many tools,
-   and whether each ships an instruction block. Tool definitions are a first-class context
-   cost, not free plumbing — inventory them like any other surface.
+Before mapping anything, get the ground truth the platform computes. As of this writing these
+are **interactive-only** — an agent cannot run them and capture the output (the terminal
+`claude doctor` only checks install health, not context cost). So **ask the owner to run each
+and paste the result** (or read it off their screen if you share one):
 
-## Phase 2 — ANALYZE (find the junk)
+1. **`/context`** — the real token cost of the current window, broken down by category:
+   system prompt, system tools, MCP tools, custom agents, memory files, the skill listing,
+   and conversation. This is the budget. Record each category's real number; note which
+   ones dominate and which are surprisingly large for what they do.
+2. **`/doctor`** — the platform's own findings: unused skills / MCP servers / plugins and
+   their context cost, CLAUDE.md that can be trimmed, slow hooks, and — critically — whether
+   the **skill listing overran its budget** (past ~1% of the window Claude Code silently
+   truncates descriptions, starting with least-used skills, stripping the very keywords that
+   make a skill discoverable). Capture every recommendation verbatim; these are free wins.
+3. Optionally `/mcp` (tool count per server), `/hooks`, `/permissions`, `/memory` to confirm
+   what's active.
 
-Work through five lenses, citing file paths and numbers for every finding:
+If the owner can't or won't run these, say so plainly and fall back explicitly: use the
+script's word counts as the budget proxy, multiply by ~1.3 for a ±30% token sense, and label
+**every** cost figure in the report as an estimate (not a real token count). Don't stall
+waiting for `/context`, and don't silently drop cost from the report — degrade to the estimate.
 
-1. **Duplicates and drift.** Same rule living in several places; same-name files with
-   diverging content (the script flags candidates — verify each by reading both versions;
-   same name with different purpose is NOT a duplicate). Each real copy is a fork of the
-   truth: one gets fixed, the others rot.
-2. **Load-time misplacement (the progressive-disclosure test).** What loads at session
-   start but is only needed for one task type? What does each skill drag in through its
-   reference chain (the script measures words per chain)? Big libraries are fine —
-   everything loading at once is not. A healthy surface loads a *pointer* and opens the
-   detail on demand (the way skills are meant to work); an unhealthy one inlines the whole
-   procedure into `CLAUDE.md` or a skill head, so it's paid for every session whether the
-   task needs it or not. Flag front-loaded content that should sit behind a link.
-3. **Budget pressure.** Total preload words; sum of skill descriptions vs the discovery
-   surface; the single heaviest routes. Report raw numbers and compare against the
-   thresholds table in the repo README (they age — the numbers don't).
-4. **Stale, unenforced, and compaction-fragile.** Rules referencing tools/files that no
-   longer exist; hard requirements (word limits, output formats) living as prose that
-   should be hooks, schemas, or permission rules instead. And separate **critical rules
-   from compaction-survivable ones**: an instruction the model must never drop (a safety
-   invariant, a hard constraint) belongs somewhere permanent — a hook, a permission, an
-   always-loaded config line — not in prose that a mid-session context compaction can
-   summarize away. Flag critical instructions that survive only as long as the raw text
-   stays in the window.
-5. **Tool surface.** More tools is not more capability — overlapping or redundant tools
-   degrade selection, and every definition spends context whether or not it's used. From
-   the live surface (MAP step 4): which tools overlap or duplicate each other's job? Which
-   servers are subscribed but unused here? Which heavy schemas load upfront when they're
-   needed for one task type only? The fix is a minimal, non-overlapping set: drop unused
-   servers, prefer deferred/on-demand tool loading over loading everything upfront, and
-   for MCP-heavy setups consider driving the server through code execution instead of
-   exposing every tool as a direct call. Tools should return only the signal the task needs.
+## Phase 2 — MAP STRUCTURE (what the numbers don't show)
 
-## Phase 3 — REPORT (verdict first, details last)
+Run the deterministic collector (requires bash ≥ 4):
+`bash .claude/skills/harness-audit/scripts/inventory.sh <project-path>` — the path after the
+standard install; if the repo is elsewhere, use its `scripts/inventory.sh`.
+`HARNESS_AUDIT_EXTRA_SKILL_DIRS=/p1:/p2` covers non-standard skill layouts.
+
+It enumerates every surface (CLAUDE.md, rules, skills + description sizes, commands, agents,
+hooks, memory, MCP names) and runs three cross-checks a token count can't:
+- **Broken references** — a rule/CLAUDE.md link pointing at a file that no longer exists.
+  Silent rot: the instruction reads fine, the target is gone.
+- **Content overlap** — differently-named files sharing several lines (drift candidates).
+- **Same-name copies** — the fast exact-duplicate check, with a diverged/identical verdict.
+
+Read the output as **structure and leads for Phase 3**, not as a verdict. Word counts here
+are size, not cost — the cost lives in Phase 1. A surface that doesn't exist is noted and
+skipped, never an error.
+
+## Phase 3 — ANALYZE (read the content — this is the part a script can't do)
+
+The platform gave you cost (Phase 1); the script gave you structure and mechanical leads
+(Phase 2). Now **read the actual files** and find what neither can. Cite paths and numbers
+for every finding. Six lenses:
+
+1. **Contradictions.** Two rules that pull opposite ways — one says "always X", another
+   "never X" for the same situation. The model silently picks one and you can't predict
+   which. The most damaging finding and the hardest to see from counts alone: it needs
+   reading. Follow the script's content-overlap and same-name leads first, then read across
+   unrelated rules for conflicting directives.
+2. **Drift.** The same rule living in several places with diverged wording (the script flags
+   candidates — verify by reading each; same name with a genuinely different purpose is NOT
+   drift). Each copy is a fork of the truth: one gets fixed, the others rot and quietly
+   contradict it.
+3. **Stale and dead.** Rules referencing tools, files, services, or workflows that no longer
+   exist (start from the script's broken-references list, then judge the survivors:
+   a rule about a process you stopped using costs attention and teaches the model wrong).
+4. **Prose that should be enforced.** Hard requirements — word limits, output formats, safety
+   invariants — living as polite text the model can (and does) ignore. Separate two grades:
+   an ordinary requirement belongs in a hook / schema / permission rule; a **critical**
+   instruction the model must never drop belongs somewhere **permanent** (a hook, a
+   permission, an always-loaded line) — not in prose a mid-session compaction can summarize
+   away. Flag critical rules that survive only as long as their raw text stays in the window.
+5. **Load-time misplacement.** What loads every session (Phase 1 shows its real cost) but is
+   only needed for one task type? A healthy surface preloads a *pointer* and opens the detail
+   on demand — the way skills are meant to work. Flag the opposite: a whole procedure inlined
+   into CLAUDE.md or a skill head, paid every session whether the task needs it. Use the
+   script's per-skill reference chains to spot the heaviest routes.
+6. **Tool & MCP surface.** From `/context` (real numbers) and `/doctor` (unused servers):
+   more tools is not more capability — overlapping tools degrade selection and every schema
+   spends context. Which servers are subscribed but unused here? Which overlap (two ways to
+   do one job)? Which heavy schemas load upfront for a one-task-type need? The fix is a
+   minimal, non-overlapping set: drop unused servers, prefer on-demand over upfront loading,
+   and for MCP-heavy setups consider driving the server through code execution instead of
+   exposing every tool.
+
+## Phase 4 — REPORT (verdict first, platform wins first, then what only you found)
 
 Write for a human who hasn't seen the audit. Every finding is a short story in plain
-language — what's happening → why it hurts → what to do → what it saves. The analysis
-lenses (keep / merge / defer-load / harden / remove) stay internal to Phase 2; in the
-report they become ordinary verbs inside sentences, never headline codes like "MERGE ×3".
-Structure, top to bottom:
+language — what's happening → why it hurts → what to do → what it saves. Keep the lens names
+(contradiction / drift / stale / enforce / defer / trim-tools) internal; in the report they're
+ordinary verbs in sentences, never headline codes. Structure, top to bottom:
 
-1. **TL;DR (≤5 lines)** — one-phrase verdict (healthy / needs cleanup / cluttered), the
-   single most telling number, and the top 3 actions with their expected payoff.
-2. **Health board** — six axes as traffic lights (green / yellow / red), one line of
-   "why" per axis: session preload, duplicate & drifted rules, skill catalog
-   (descriptions budget), heaviest load routes, stale or unenforced rules, tool surface
-   (count, overlap, upfront vs. deferred).
-3. **Findings by priority** — critical first. Each: a short paragraph (what → why it
-   hurts → proposal → expected saving); paths and numbers are the evidence, not the
-   headline.
-4. **What's healthy** — what to leave alone and why. Earns trust (the report doesn't
-   only complain) and stops the next audit from re-litigating settled calls.
-5. **Cleanup plan** — proposed steps in execution order + a before → after table of the
-   headline numbers if every proposal is accepted.
-6. **Appendix** — full inventory numbers and the receipt: what was scanned, what was
-   skipped and why, what needs a human eye. The owner decides; you propose.
+1. **TL;DR (≤5 lines)** — one-phrase verdict (healthy / needs cleanup / cluttered), the single
+   most telling number (a real token figure from `/context` when you have it), and the top 3
+   actions with expected payoff.
+2. **What `/doctor` already flags** — the platform's own recommendations, restated crisply, as
+   the first and cheapest wins. Don't duplicate the platform; point to it and move on. If the
+   owner didn't run it, say the audit is running blind on cost and recommend they do.
+3. **What `/doctor` can't see — findings by priority** — the real payload of this skill.
+   Critical first. Each: a short paragraph (what → why it hurts → proposal → expected saving);
+   paths and numbers are the evidence, not the headline. Contradictions and broken references
+   lead — they're the ones nothing else catches.
+4. **Health board** — a compact traffic-light (green / yellow / red) over the axes that
+   applied: real preload cost, skill-listing budget (from `/doctor`), duplicate & drifted
+   rules, broken references, heaviest load routes, stale/unenforced rules, tool surface. One
+   line of "why" per axis. Omit an axis you couldn't assess rather than guessing it green.
+5. **What's healthy** — what to leave alone and why. Earns trust and stops the next audit from
+   re-litigating settled calls.
+6. **Cleanup plan** — proposed steps in execution order + a before → after table of the
+   headline numbers if every proposal is accepted (real tokens where you have them).
+7. **Appendix** — the receipt: what was scanned, what the platform reported, what was skipped
+   and why, what needs a human eye. The owner decides; you propose.
 
-Offer to re-run the audit after cleanup to verify the before/after delta — and suggest
-scheduling it as periodic maintenance (monthly, or before every model switch).
+Offer to re-run after cleanup to verify the before/after delta — and suggest scheduling it as
+periodic maintenance (monthly, or before every model switch).
