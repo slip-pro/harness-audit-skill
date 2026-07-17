@@ -36,8 +36,16 @@ and paste the result** (or read it off their screen if you share one):
 
 1. **`/context`** — the real token cost of the current window, broken down by category:
    system prompt, system tools, MCP tools, custom agents, memory files, the skill listing,
-   and conversation. This is the budget. Record each category's real number; note which
-   ones dominate and which are surprisingly large for what they do.
+   and conversation. **Have the owner run it in a fresh session** (right after `/clear`,
+   before doing work): `/context` is a live snapshot of the *current* session, not a static
+   scan of the harness — but every category *except* conversation is fixed by the harness and
+   identical for any session with this config. That's the harness's per-session tax and the
+   budget you audit; the conversation line is the owner's own messages, so exclude it. Record
+   each harness category's real number; note which dominate and which are large for what they
+   do. **Scope caveat:** these numbers are the *always-on* floor — what loads every session.
+   A skill's body and a subagent's context load only when invoked, so they don't appear here;
+   that on-demand surface is what Phase 2's script sizes separately (don't read its absence
+   from `/context` as "free").
 2. **`/doctor`** — the platform's own findings: unused skills / MCP servers / plugins and
    their context cost, CLAUDE.md that can be trimmed, slow hooks, and — critically — whether
    the **skill listing overran its budget** (past ~1% of the window Claude Code silently

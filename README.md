@@ -14,7 +14,13 @@ problems your instructions created.
 Claude Code already ships two things this audit refuses to reinvent:
 
 - **`/context`** — the real, per-category token cost of your window (system prompt, tools,
-  MCP, agents, memory, the skill listing, messages). This is your actual budget.
+  MCP, agents, memory, the skill listing, conversation). Run it in a **fresh session**
+  (right after `/clear`, before working): everything *except* the conversation line is fixed
+  by the harness and identical for every session — that's the harness's per-session tax, and
+  it's your budget. The conversation line is your own messages, not the harness — ignore it
+  for the audit. (One caveat: this is the *always-on* floor. A skill's body and a subagent's
+  context load only when invoked, so they don't show here — that on-demand surface is what the
+  inventory script sizes separately.)
 - **`/doctor`** — the platform's own health pass: unused skills / MCP servers and their
   context cost, CLAUDE.md that can be trimmed, slow hooks, skill-listing budget overrun.
 
