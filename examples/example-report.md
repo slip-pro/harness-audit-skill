@@ -1,42 +1,31 @@
 # Harness audit — example report
 
 > Illustrative output for a mid-size project ("acme-app"). Numbers and paths are
-> fictional but realistic. The owner ran `/context` and `/doctor` and shared both, so
-> the cost figures below are real tokens, not estimates. Your report will be in the
+> fictional but realistic. This is the **default one-command run**: it needs nothing from
+> you, and costs are estimates from structure, marked "≈ / est." The optional sharpen step
+> (real `/context` / `/doctor` numbers) is shown at the very end. Your report will be in the
 > language you talk to Claude in.
 
 ## TL;DR
 
-**Verdict: needs cleanup.** `/context` shows **31,200 tokens** committed before the first
-message — 15% of the window — and the biggest offenders aren't size, they're conflicts: two
-rules give opposite instructions on commit messages, and a skill points at a runbook that was
-deleted in March. Three moves fix most of it:
+**Verdict: needs cleanup.** The setup commits an estimated **≈ 31k tokens** before the first
+message, but the biggest problems aren't size — they're conflicts: two rules give opposite
+instructions on commit messages, and a skill points at a runbook that was deleted in March.
+Three moves fix most of it:
 
 1. Resolve the commit-message contradiction (two rules, opposite orders) → the model stops
    guessing which one wins.
 2. Fix or drop the 3 broken references → instructions stop pointing at deleted files.
-3. Defer the release runbook out of the preload → −6,800 tokens on every non-release task.
+3. Defer the release runbook out of the preload → ≈ −6.8k tokens (est.) on every non-release task.
 
-## What `/doctor` already flags
-
-The platform's own pass found three free wins — do these first, no judgement required:
-
-- **Skill listing overran its budget.** 34 skills, listing at ~118% of the allowance —
-  Claude Code is silently truncating the least-used descriptions, so some skills have gone
-  undiscoverable. `/doctor` names `data-export` and `pdf-stamp` as the ones being cut.
-- **2 MCP servers unused this session** (`figma`, `sentry`) — ~4,100 tokens of tool schemas
-  loaded for zero calls. Disable them for projects that don't touch design or error triage.
-- **CLAUDE.md has ~600 words of content derivable from the repo** (directory listing, the
-  test command already in `package.json`). Trim per `/doctor`'s suggestion.
-
-## What `/doctor` can't see — findings by priority
+## Findings by priority
 
 **1. Two rules disagree on commit messages, and the model can't tell which wins.** 🔴
 `.claude/rules/git.md` says *"commit messages in imperative mood, no body"*; the `ship-release`
 skill's embedded checklist says *"every commit needs a body explaining why"*. Both load, they
 contradict, and which one the model follows depends on reading order. **Proposal:** pick one
 home (the rule), delete the directive from the skill, link to the rule. Contradictions are the
-one failure a token count and `/doctor` both miss — nothing catches them but reading.
+one failure no token count catches — nothing finds them but reading, so this needs no cost data.
 
 **2. Three references point at files that no longer exist.** 🔴
 `onboarding.md` links `docs/deploy-runbook.md` (deleted in March), `security.md` links a
@@ -52,28 +41,43 @@ one copy and rot in the others. **Proposal:** keep the rule as the single home; 
 other two with links.
 
 **4. Starting a release drags in a small book.** 🟡
-`/context` shows the preload at 8,900 tokens; ~6,800 of it is the deployment runbook and
-rollback history linked from `ship-release`'s head — needed only at the verify step, if at all,
-yet paid every session. `/doctor` flags bloat *inside* CLAUDE.md, but not this: the weight sits
-in a skill's reference chain, not in the preload file itself, so it stays under the radar until
-you trace what the route drags in. **Proposal:** move it behind a "read at verify" pointer.
-Preload drops 8,900 → ~2,100 tokens with nothing lost.
+The script's size map puts the CLAUDE.md + skill-head preload around ≈ 8.9k tokens (est.); ~6.8k
+of it is the deployment runbook and rollback history reachable from `ship-release`'s head —
+needed only at the verify step, if at all, yet on every session's route. The misplacement is
+visible from structure alone; the exact weight is one `/context` away. **Proposal:** move it
+behind a "read at verify" pointer. Preload drops ≈ 8.9k → ≈ 2.1k tokens with nothing lost.
 
 **5. Five hard requirements are requests, not rules.** 🟡
 Word limits and JSON output formats live as prose in five prompts — the model can (and does)
 politely ignore them. **Proposal:** enforce with a PostToolUse hook and an output schema, then
 delete the prose. A check that blocks beats a sentence that asks.
 
+**6. The skill listing is near its budget.** 🟡
+34 skills; the script totals ~15,900 chars of `description` text. The listing Claude reads to
+pick a skill gets ~1% of the window (~2,000 tokens on a 200k model), and past it Claude Code
+**silently truncates** the least-used descriptions — stripping the keywords that make a skill
+discoverable. This is an estimate off char counts; `/doctor` reports the exact overrun and names
+which skills are being cut. **Proposal:** trim or merge low-use skills before the platform
+starts hiding them.
+
+**7. Two MCP servers may be dead weight.** 🟡
+`figma` and `sentry` are configured; their tool schemas load upfront every session. Whether they
+went *unused this session* is a runtime fact only `/doctor` knows — flagged here as worth
+checking, not asserted. **Proposal:** for projects that don't touch design or error triage,
+disable them and reclaim the schema cost.
+
 ## Health board
+
+Costs marked "est." are structural estimates; the rest are exact from the script.
 
 | Axis | Status | Why |
 |---|---|---|
-| Preload cost (`/context`) | 🟡 | 8,900 tokens every session; ~6,800 is release-only |
-| Skill listing budget (`/doctor`) | 🔴 | ~118% of budget — 2 skills silently truncated |
+| Preload weight | 🟡 | ≈ 8.9k tokens (est.) every session; ~6.8k is release-only |
+| Skill-listing budget | 🟡 | ~15.9k desc chars — near the ~1% cap; `/doctor` confirms overrun |
 | Contradictions | 🔴 | commit-message rules give opposite orders |
 | Broken references | 🔴 | 3 links/imports resolve to nothing |
 | Duplicate & drifted rules | 🟡 | code-style in 3 diverged copies |
-| Tool surface | 🟡 | 2 unused MCP servers, ~4,100 tokens for zero calls |
+| Tool surface | 🟡 | 2 MCP servers loaded upfront; usage unverified (see `/doctor`) |
 | Stale / unenforced | 🟡 | 5 hard requirements live as prose |
 
 ## What's healthy
@@ -85,33 +89,52 @@ delete the prose. A check that blocks beats a sentence that asks.
 
 ## Cleanup plan
 
-Suggested order (platform wins and safe deletes first):
+Suggested order (safe deletes and structural fixes first):
 
-1. Apply `/doctor`'s three: disable `figma` + `sentry` for this project, trim the derivable
-   CLAUDE.md content, and raise `skillListingBudgetFraction` or prune skills to end truncation.
-2. Repoint the 2 moved references; delete the 1 dead import.
-3. Resolve the commit-message contradiction; merge code-style ×3 → one home.
-4. Split the release runbook out of `ship-release`'s head.
+1. Repoint the 2 moved references; delete the 1 dead import.
+2. Resolve the commit-message contradiction; merge code-style ×3 → one home.
+3. Split the release runbook out of `ship-release`'s head.
+4. Trim/merge low-use skills to bring the listing under its budget.
 5. Convert the 5 prose requirements into a hook + schema.
 
 | Metric | Before | After |
 |---|---|---|
-| Preload (`/context`) | 8,900 tok | 2,100 tok (−76%) |
-| Skill listing vs budget | ~118% | ~90% (no truncation) |
-| Unused MCP tool cost | ~4,100 tok | 0 (disabled) |
+| Preload (est.) | ≈ 8.9k tok | ≈ 2.1k tok (−76%) |
+| Skill-listing desc chars | ~15.9k | ~11k (under cap) |
 | Contradictions | 1 | 0 |
 | Broken references | 3 | 0 |
 | Diverged duplicates | 3 | 0 |
 
 ## Appendix — receipt
 
-- **Platform ran:** `/context` (real per-category tokens) and `/doctor` (health pass) — both
-  shared by the owner; cost figures above are real, not estimates.
 - **Script scanned:** 2 CLAUDE.md, 14 rules, 34 skills (+ description sizes), 2 settings files
   (key names only), memory index, 4 hook registrations, MCP server names.
 - **Cross-checks:** 3 broken references, 4 content-overlap pairs, 3 same-name diverged copies.
+- **Costs:** structural estimates (word counts × ~1.3). Not run: `/context`, `/doctor`.
 - **Skipped:** plugin internals (read-only marketplace copies).
 - **Needs a human eye:** whether `docs/conventions.md` is one rule with `code-style.md` or a
   separate audience.
 
 *No changes were made. Every arrow above is a proposal.*
+
+---
+
+## Sharpen (optional)
+
+> Costs above are estimates. For exact per-category tokens and the platform's own health pass,
+> run `/context` and `/doctor` in a fresh session (after `/clear`, before working) and paste
+> them — the skill refines **only the cost section**, leaving the findings as they are. The
+> report already stands on its own; this just swaps estimates for real numbers.
+>
+> Illustrative delta if you run them:
+>
+> - **`/context`** reports the preload at **28,400 real tokens** (the estimate was ≈ 31k) — the
+>   "est." labels drop for those categories, and the release runbook measures **6,200 real
+>   tokens**, confirming finding #4.
+> - **`/doctor`** confirms the skill listing at **118% of budget** and names `data-export` +
+>   `pdf-stamp` as the descriptions being truncated; flags `figma` + `sentry` as **unused this
+>   session** (~4,100 tokens of schemas for zero calls); suggests trimming ~600 words of
+>   repo-derivable content from CLAUDE.md.
+>
+> These fold in as free wins. The estimate got you the shape and the cleanup order; the platform
+> got you the exact numbers — neither was a gate.

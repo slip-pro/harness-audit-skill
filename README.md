@@ -9,24 +9,10 @@ sees the whole picture, and it all competes for the model's attention on every t
 new model ships, inherits the pile, behaves differently — and you add another rule to fix
 problems your instructions created.
 
-## What makes this different from `/doctor`
+## What it finds — one command, one report
 
-Claude Code already ships two things this audit refuses to reinvent:
-
-- **`/context`** — the real, per-category token cost of your window (system prompt, tools,
-  MCP, agents, memory, the skill listing, conversation). Run it in a **fresh session**
-  (right after `/clear`, before working): everything *except* the conversation line is fixed
-  by the harness and identical for every session — that's the harness's per-session tax, and
-  it's your budget. The conversation line is your own messages, not the harness — ignore it
-  for the audit. (One caveat: this is the *always-on* floor. A skill's body and a subagent's
-  context load only when invoked, so they don't show here — that on-demand surface is what the
-  inventory script sizes separately.)
-- **`/doctor`** — the platform's own health pass: unused skills / MCP servers and their
-  context cost, CLAUDE.md that can be trimmed, slow hooks, skill-listing budget overrun.
-
-**harness-audit reads those first, then does the part they can't.** A word-count estimate of
-token cost when `/context` reports the real number is exactly the kind of junk an audit should
-flag — so this skill doesn't do it. Instead it goes past the platform to find:
+Run one command, get a full report. No homework: a deterministic script maps every surface and
+runs cross-checks, then the model reads your config for what only reading catches —
 
 - **broken references** — a rule pointing at a file that was renamed or deleted (the
   instruction still reads fine; the target is gone);
@@ -38,8 +24,31 @@ flag — so this skill doesn't do it. Instead it goes past the platform to find:
 - **load-time bloat** — a whole procedure inlined into the preload, paid every session whether
   the task needs it or not.
 
+None of that needs a token count — it comes from the script and from reading. Token *cost* is
+estimated from structure (word counts) and **clearly labeled as an estimate**. That's the whole
+audit: one command in, one report out.
+
 Fat setups think richer and deliver worse. When "the new model got worse", the junk is often
 yours. Treat the harness like a car: it needs scheduled maintenance.
+
+### Optional: sharpen the cost numbers with `/context` and `/doctor`
+
+Claude Code ships two commands the audit won't reinvent — and won't *depend* on either:
+
+- **`/context`** — the real, per-category token cost of your window. Run it in a **fresh
+  session** (after `/clear`, before working): every category *except* the conversation line is
+  fixed by the harness and identical for every session — that's your per-session budget. (It's
+  the *always-on* floor; on-demand skill bodies and subagent context don't show there — that
+  surface is what the inventory script sizes.)
+- **`/doctor`** — the platform's own health pass: unused skills / MCP servers this session and
+  their cost, CLAUDE.md it can trim, slow hooks, skill-listing budget overrun.
+
+Both are **interactive** — the model can't run them for you. So the skill treats them as an
+optional *final* step: the report is complete without them; paste their output and it refines
+only the cost section (real tokens replace the estimate, and `/doctor`'s free wins get folded
+in). The thing an audit should never do isn't *estimating* — it's passing a guess off as a real
+number or inventing thresholds. This labels every estimate and points you at the exact numbers
+when you want them.
 
 ### Why a harness is a budget
 
@@ -76,19 +85,18 @@ In a Claude Code session inside your project:
 /harness-audit
 ```
 
-or just ask: *"audit my harness"*. The skill runs in four phases:
+or just ask: *"audit my harness"*. The skill runs start to finish on its own:
 
-1. **REAL NUMBERS** — it asks you to run `/context` and `/doctor` and share the output. These
-   are interactive commands the model can't run for you; their numbers are the ground truth
-   the whole audit stands on.
-2. **MAP STRUCTURE** — `scripts/inventory.sh` (deterministic, bash-only, no dependencies)
-   enumerates every surface and runs cross-checks the platform doesn't: broken references,
-   content overlap, same-name duplicates.
-3. **ANALYZE** — the model reads the actual files for what only reading finds: contradictions,
+1. **MAP STRUCTURE** — `scripts/inventory.sh` (deterministic, bash-only, no dependencies)
+   enumerates every surface and runs cross-checks: broken references, content overlap,
+   same-name duplicates. Zero interaction.
+2. **ANALYZE** — the model reads the actual files for what only reading finds: contradictions,
    drift, stale rules, prose-that-should-be-enforced, load-time misplacement, tool overlap.
-4. **REPORT** — verdict-first: TL;DR, what `/doctor` already flags (cheapest wins), then the
-   findings only this audit catches, a health board, what's healthy, and a cleanup plan with
-   before/after numbers.
+3. **REPORT** — verdict-first: TL;DR, findings by priority, a health board, what's healthy, and
+   a cleanup plan with before/after numbers. Costs are estimated from structure and labeled.
+4. **SHARPEN (optional)** — the report ends with an offer: run `/context` and `/doctor` and
+   paste them, and it refines just the cost section with real tokens plus the platform's own
+   wins. Skip it and the report still stands.
 
 It changes **nothing**. Every proposal is a diff you decide to make (or not) after reading the
 report. The report is written in whatever language you talk to Claude in.
@@ -112,23 +120,26 @@ Past the budget Claude Code **silently shortens descriptions**, starting with th
 skills — stripping exactly the keywords that make a skill discoverable. `/context` (v2.1.196+)
 reports the listing's real size after the budget is applied; `/doctor` warns when it overran.
 
-The inventory script prints raw word counts only (no token figure — it deliberately doesn't
-guess what `/context` reports exactly). Treat the word counts as a **structure map and a rough
-fallback**: to eyeball relative sizes when you haven't run `/context`, multiply mentally by
-~1.3 for a ±30% token sense. When the real numbers are on the table, ignore the estimate.
+The inventory script prints raw word counts only (no token figure). The report's **default cost
+estimate** comes from these: multiply by ~1.3 for a ±30% token sense, and every figure is
+labeled an estimate. That's enough to see what dwarfs what and to rank the cleanup — the
+relative picture doesn't need exact tokens. If you want the exact numbers, the optional sharpen
+step swaps them in from `/context`; the estimate is a starting point, not a stand-in for truth.
 
 ## What it does NOT do
 
 - **No automatic cleanup.** Read-only by design; apply-mode may come later.
 - **No secret reading.** Settings are inventoried by key names and sizes only.
-- **No re-measuring the platform.** Token cost comes from `/context` / `/doctor`, not a guess.
+- **No faked precision.** Default cost is a structural estimate, labeled as one; exact tokens
+  come from `/context` / `/doctor` only if you opt into the optional sharpen step.
 - **Claude Code only** (v1). Codex and other harnesses — maybe later.
 
 ## Limitations
 
 - `/context` and `/doctor` are **interactive** — the model can't run them and read the output
-  itself. The audit depends on you sharing their output; without it, cost figures fall back to
-  the ±30% word-count estimate and the report says so.
+  itself. The audit does **not** depend on them: it runs fully on the script + file reading and
+  reports estimated costs. They're an optional sharpen step that swaps estimates for exact
+  tokens; skip them and the report still stands.
 - **Contradiction and drift detection is judgement, not a checksum.** The script surfaces
   overlap and same-name candidates deterministically; deciding whether two rules truly conflict
   (vs. serve different audiences) is the model reading them, and can miss or over-flag.
